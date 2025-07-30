@@ -150,8 +150,6 @@ class DataOperator:
     def updateDataStatistic(cls, record, statistic_map: dict):
         try:
             # 复位
-            if not record or DATA_INDEX_NAME not in record or DATA_HUNDREDS_NAME not in record or DATA_TENS_NAME not in record or DATA_ONES_NAME not in record:
-                return
             # 更新数据统计
             data_index = record[DATA_INDEX_NAME]
             hundreds = int(record[DATA_HUNDREDS_NAME])
