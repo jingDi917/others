@@ -43,29 +43,50 @@ class Predictor:
 
             position_range_pair, position_relation_pair = GetPair.getSortPair(base_prob, data_status)
             final_res = {}
+
             for key, value in merge_res.items():
-                hundreds = int(key[0])
-                tens = int(key[1])
-                ones = int(key[2])
-                sort_key_position_relation = ''.join(sorted(positionRelations(hundreds, tens, ones)))
-                find_flag = False
-                for position_range in position_relation_pair:
-                    sorted_position_range = ''.join(sorted(map(str, position_range)))
-                    if sort_key_position_relation == sorted_position_range:
-                        find_flag = True
-                        new_hundreds, one_tens, new_ones = cls.adjustPositionOrder(hundreds, tens, ones, key, position_range)
-                        final_res[f"{new_hundreds}{one_tens}{new_ones}"] = value
+                hundreds, tens, ones = map(int, key)  # 直接解构三位数字
+                
+                
+                # 获取当前数字的位置关系表示 (如 "<<", "=<" 等)
+                possible_orders = cls.getAllPossibleOrder(hundreds, tens, ones)
+                
+                # 在预定义的概率关系中查找匹配项
+                matched = False
+                for position_range, prob in position_relation_pair:
+                                        
+                    if position_range in possible_orders:
+                        matched = True
+                        # 按照概率关系调整数字顺序
+                        adjusted_hundreds, adjusted_tens, adjusted_ones = cls.adjustPositionOrder(
+                            hundreds, tens, ones, key, position_range
+                        )
+                        final_res[f"{adjusted_hundreds}{adjusted_tens}{adjusted_ones}"] = value
                         break
-                if not find_flag:
-                    final_res.update({key: value})
+                
+                # 如果没有匹配的概率关系，保持原顺序
+                if not matched:
+                    final_res[key] = value
 
             selected_res = cls.dropElementsByRatio(final_res, FINAL_DROP_RATIO)
 
             return selected_res, final_res, merge_res, filter_res, enhance_res, filter_map, enhance_map, next_pair
+        
         except Exception as e:
             err_msg = traceback.format_exc()
             raise Exception(f"预测失败: {err_msg}")
-        
+
+    @classmethod
+    def getAllPossibleOrder(cls, hundreds, tens, ones):
+        """根据百位、十位、个位的数字生成所有可能的数字组合"""
+        possible_orders = []
+        possible_orders.append(positionRelations(hundreds, tens, ones))
+        possible_orders.append(positionRelations(tens, hundreds, ones))
+        possible_orders.append(positionRelations(ones, tens, hundreds))
+        possible_orders.append(positionRelations(hundreds, ones, tens))
+        possible_orders.append(positionRelations(tens, ones, hundreds))
+        possible_orders.append(positionRelations(ones, hundreds, tens))
+        return possible_orders
 
     @classmethod
     def dropElementsByRatio(cls, items, drop_ratio):
@@ -203,8 +224,29 @@ class Predictor:
             ones = int(record[DATA_ONES_NAME])
             recent_position_range_list.append(positionRange(hundreds, tens, ones))
         return recent_position_range_list
-
     
+    @classmethod
+    def getConbinds(cls, i, j, k):
+        if isPair(i, j, k):
+            return []
+        return [f"{i}{j}", f"{i}{k}", f"{j}{k}", f"{j}{i}", f"{k}{i}", f"{k}{j}"]
+    
+    @classmethod
+    def getRecentConbinaSet(cls, recent_ans):
+        if not recent_ans:
+            return []
+        recent_conbina_set = set()
+        for record in recent_ans[-3:]:
+            hundreds = int(record[DATA_HUNDREDS_NAME])
+            tens = int(record[DATA_TENS_NAME])
+            ones = int(record[DATA_ONES_NAME])
+            if isPair(hundreds, tens, ones):
+                continue
+            conbinds = cls.getConbinds(hundreds, tens, ones)
+            recent_conbina_set.update(conbinds)
+        return recent_conbina_set
+
+
     @classmethod
     def isFilter(cls, i, j, k, filter_map, recent_ans, base_prob):
         if not filter_map:
@@ -218,6 +260,8 @@ class Predictor:
         position_range_value = positionRange(i, j, k)
         recent_postion_range_list = cls.getRecentPositionRange(recent_ans)
         position_relation_value = positionRelations(i, j, k)
+        recent_conbina_set = set(cls.getRecentConbinaSet(recent_ans))
+        current_conbina_set = set(cls.getConbinds(i, j, k))
         if SUM_PROB in base_prob and sum_value in base_prob[SUM_PROB] and base_prob[SUM_PROB][sum_value] < IGNORE_SUM_THRESHOLD:
             if "1" not in preditct_record:
                 preditct_record["1"] = 0
@@ -229,6 +273,7 @@ class Predictor:
             preditct_record["2"] += 1
             return 2
         
+        #num_set_flag = NUMBER in filter_map and (str(i) in filter_map[NUMBER] or str(j) in filter_map[NUMBER] or str(k) in filter_map[NUMBER] or str(i) in recent_number or str(j) in recent_number or str(k) in recent_number)
         sum_set_flag = SUM_PROB in filter_map and sum_value in filter_map[SUM_PROB]
         diff_set_flag = DIFF_PROB in filter_map and diff_value in filter_map[DIFF_PROB]
         odd_even_set_flag = ODD_EVEN_RATIO in filter_map and odd_even_value in filter_map[ODD_EVEN_RATIO]
@@ -255,6 +300,23 @@ class Predictor:
                 preditct_record["5"] = 0
             preditct_record["5"] += 1
             return 5
+        
+        merge_set = current_conbina_set & recent_conbina_set
+        if merge_set != set():
+            if "6" not in preditct_record:
+                preditct_record["6"] = 0
+            preditct_record["6"] += 1
+            return 6
+        # if pair_flag and recent_pair_falg:
+        #     if "6" not in preditct_record:
+        #         preditct_record["6"] = 0
+        #     preditct_record["6"] += 1
+        #     return 6
+        # if str(i) in recent_number or str(j) in recent_number or str(k) in recent_number:
+        #     if "7" not in preditct_record:
+        #         preditct_record["7"] = 0
+        #     preditct_record["7"] += 1
+        #     return 6
         # if SUM_PROB in filter_map and sum_value in filter_map[SUM_PROB]:
         #     if "3" not in preditct_record:
         #         preditct_record["3"] = 0
@@ -306,10 +368,16 @@ class Predictor:
         auxiliary_flag_num += tuple_set_flag
         auxiliary_flag_num += odd_even_set_flag
         auxiliary_flag_num += pair_set_flag
-        # if sum_set_flag and diff_set_flag:
-        #     return 1
+        if sum_set_flag and diff_set_flag:
+            return 1
         if (sum_set_flag or diff_set_flag) and auxiliary_flag_num >= 2:
             return 2
+        if odd_even_set_flag and pair_flag:
+            return 3
+        if odd_even_set_flag and tuple_flag:
+            return 4
+        if odd_even_set_flag and num_set_flag:
+            return 5
         if auxiliary_flag_num > 3:
             return 3
         # if (SUM_PROB in enhance_map and sum_va lue in enhance_map[SUM_PROB]):
