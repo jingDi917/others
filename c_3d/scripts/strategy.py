@@ -306,13 +306,17 @@ class Predictor:
         auxiliary_flag_num += tuple_set_flag
         auxiliary_flag_num += odd_even_set_flag
         auxiliary_flag_num += pair_set_flag
-        # if sum_set_flag and diff_set_flag:
-        #     return 1
+        if sum_set_flag and diff_set_flag:
+            return 1
         if (sum_set_flag or diff_set_flag) and auxiliary_flag_num >= 2:
             return 2
         if auxiliary_flag_num > 3:
             return 3
-        # if (SUM_PROB in enhance_map and sum_va lue in enhance_map[SUM_PROB]):
+        # if odd_even_set_flag and pair_set_flag:
+        #     return 4
+        # if odd_even_set_flag and tuple_set_flag:
+        #     return 5
+        # if SUM_PROB in enhance_map and sum_value in enhance_map[SUM_PROB]:
         #     return 1
         # if DIFF_PROB in enhance_map and diff_value in enhance_map[DIFF_PROB]:
         #     return 2
@@ -323,11 +327,6 @@ class Predictor:
         # if TUPLE_PROB in enhance_map and enhance_map[TUPLE_PROB] and tuple_flag:
         #     return 5
         return 0
-    
-
-    @classmethod
-    def getFinalSort():
-        pass
 
 class CalulateMathProbability:
     @classmethod

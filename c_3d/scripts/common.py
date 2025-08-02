@@ -86,6 +86,13 @@ class WriteBaseData:
             fp.write(line)
         fp.close()
 
+    @classmethod
+    def writeAllRawData(cls, raw_datas):
+        with open(RAW_DATA_FILE, 'w') as fp:
+            for line in raw_datas:
+                fp.write(line)
+            fp.close()
+
 class GetBaseData:
     @classmethod
     def getAccounts(cls):

@@ -1,6 +1,6 @@
 from ..scripts.strategy import Predictor, BsaeStrategy, preditct_record
 from ..scripts.common import BaseCommonFunc, DATA_INDEX_NAME, DATA_HUNDREDS_NAME, DATA_TENS_NAME, DATA_ONES_NAME
-from ..scripts.common import GetBaseData
+from ..scripts.common import GetBaseData, WriteBaseData
 from ..scripts.data_status import DataOperator, getSum, getDiff, isPair
 import json
 import random
@@ -37,7 +37,7 @@ def main():
     enhance_map = {}
     receive = 0
     pay = 0
-    for i in range(index, min(index + 190, len(raw_data))):
+    for i in range(index, min(index + 500, len(raw_data))):
         if i >= len(raw_data):
             break
         try:
@@ -86,6 +86,51 @@ def main():
 
 
     return hit, total, sum_res, receive, pay
+
+
+def test():
+    raw_data = GetBaseData.getRawData()
+    index = 0
+    for record in raw_data:
+        if record[DATA_INDEX_NAME] == '2025079':
+            break
+        index += 1
+    pre_data = raw_data[0:index]
+    after_data = raw_data[index:]
+    array_index = index
+    pre_data.append({
+        DATA_INDEX_NAME: '2025079',
+        DATA_HUNDREDS_NAME: '6',
+        DATA_TENS_NAME: '5',
+        DATA_ONES_NAME: '7'
+    })
+    pre_data.append({
+        DATA_INDEX_NAME: '2025080',
+        DATA_HUNDREDS_NAME: '5',
+        DATA_TENS_NAME: '0',
+        DATA_ONES_NAME: '0'
+    })
+    for record in after_data:
+        data_index = record[DATA_INDEX_NAME]
+        if data_index == '':
+            pre_data.append(record)
+            continue
+        current_year, current_index = BaseCommonFunc.splitDataIndex(data_index)
+        current_year, current_index = BaseCommonFunc.addIndex(current_year, current_index)
+        current_year, current_index = BaseCommonFunc.addIndex(current_year, current_index)
+        new_data_index = f"{current_year}{current_index:03d}"
+        record[DATA_INDEX_NAME] = new_data_index
+        pre_data.append(record)
+    raw_datas = []
+    for record in pre_data:
+        epoch_index = record[DATA_INDEX_NAME]
+        if epoch_index == "":
+            continue
+        hundreds = record[DATA_HUNDREDS_NAME]
+        tens = record[DATA_TENS_NAME]
+        ones = record[DATA_ONES_NAME]
+        raw_datas.append(f"{epoch_index}\t{hundreds}\t{tens}\t{ones}\n")
+    WriteBaseData.writeAllRawData(raw_datas)
     
 
 if __name__ == '__main__':
@@ -93,6 +138,8 @@ if __name__ == '__main__':
     hit, total, sum_res, receive, pay = main()
     print(f"hit:{hit}, total:{total}, sum_res:{sum_res}, receive:{receive}, pay:{pay}, hit ratio:{hit/total}, average:{sum_res/total}")
     #print(json.dumps(preditct_record, ensure_ascii=False))
+
+    #test()
 
     # row_data = GetBaseData.getRawData()
     # length = len(row_data)
