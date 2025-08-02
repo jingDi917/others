@@ -171,14 +171,14 @@ class BaseCommonFunc:
     def splitDataIndex(cls, data_index):
         if not isinstance(data_index, str):
             raise ValueError(f"数据索引必须是字符串: {data_index} type: {type(data_index)}")
-        if len(data_index) != 7:
-            raise ValueError(f"数据索引必须是7位: {len(data_index)}")
+        if len(data_index) != 5:
+            raise ValueError(f"数据索引必须是5位: {len(data_index)}")
         try:
-            int(data_index[:4])  # 检查年份部分是否为数字
-            int(data_index[4:])  # 检查期号部分是否为数字
+            int(data_index[:2])  # 检查年份部分是否为数字
+            int(data_index[2:])  # 检查期号部分是否为数字
         except ValueError:
             raise ValueError(f"数据索引格式错误: {data_index}，必须是YYYYDDD格式，其中YYYY为年份，DDD为期号")
-        return int(data_index[:4]), int(data_index[4:])  # 返回年份和期号   
+        return int(data_index[:2]), int(data_index[2:])  # 返回年份和期号   
 
     @classmethod
     def addIndex(cls, current_year, current_index):

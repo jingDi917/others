@@ -92,23 +92,29 @@ def test():
     raw_data = GetBaseData.getRawData()
     index = 0
     for record in raw_data:
-        if record[DATA_INDEX_NAME] == '2025079':
+        if record[DATA_INDEX_NAME] == '25166':
             break
         index += 1
     pre_data = raw_data[0:index]
     after_data = raw_data[index:]
     array_index = index
     pre_data.append({
-        DATA_INDEX_NAME: '2025079',
+        DATA_INDEX_NAME: '25166',
         DATA_HUNDREDS_NAME: '6',
-        DATA_TENS_NAME: '5',
+        DATA_TENS_NAME: '9',
+        DATA_ONES_NAME: '6'
+    })
+    pre_data.append({
+        DATA_INDEX_NAME: '25167',
+        DATA_HUNDREDS_NAME: '2',
+        DATA_TENS_NAME: '6',
         DATA_ONES_NAME: '7'
     })
     pre_data.append({
-        DATA_INDEX_NAME: '2025080',
-        DATA_HUNDREDS_NAME: '5',
+        DATA_INDEX_NAME: '25168',
+        DATA_HUNDREDS_NAME: '2',
         DATA_TENS_NAME: '0',
-        DATA_ONES_NAME: '0'
+        DATA_ONES_NAME: '3'
     })
     for record in after_data:
         data_index = record[DATA_INDEX_NAME]
@@ -116,6 +122,7 @@ def test():
             pre_data.append(record)
             continue
         current_year, current_index = BaseCommonFunc.splitDataIndex(data_index)
+        current_year, current_index = BaseCommonFunc.addIndex(current_year, current_index)
         current_year, current_index = BaseCommonFunc.addIndex(current_year, current_index)
         current_year, current_index = BaseCommonFunc.addIndex(current_year, current_index)
         new_data_index = f"{current_year}{current_index:03d}"

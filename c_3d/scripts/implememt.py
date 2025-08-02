@@ -6,7 +6,7 @@ from .data_status import DataOperator
 import traceback
 
 
-START_YEAR = 2024
+START_YEAR = 24
 START_INDEX = 250
 
 
@@ -14,7 +14,7 @@ def splitData(input_str):
     return input_str[0], input_str[1], input_str[2]
 
 
-def addData():
+def initData():
     try:
         account_array = GetBaseData.getAccounts()
         current_year, current_index = account_array[ADD_DATA_ACCOUNT_INDEX][0], account_array[ADD_DATA_ACCOUNT_INDEX][1]
@@ -32,7 +32,7 @@ def addData():
                 continue    
             epochIndex = f"{current_year}{current_index:03d}"
             current_year, current_index = BaseCommonFunc.addIndex(current_year, current_index)
-            raw_data_list.append(f"{epochIndex}\t{hundreds}\t{tens}\t{ones}")
+            raw_data_list.append(f"{epochIndex}\t{hundreds}\t{tens}\t{ones}\n")
 
         # 更新账号文件
         account_array[ADD_DATA_ACCOUNT_INDEX] = (current_year, current_index)
@@ -95,7 +95,7 @@ def predict():
     
 if __name__ == "__main__":
     try:
-        addData()
+        initData()
     except Exception as e:
         print(f"发生错误: {e}")
         exit(1)
