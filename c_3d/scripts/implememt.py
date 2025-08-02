@@ -86,7 +86,7 @@ def predict():
         current_year, current_index = account_array[ADD_DATA_ACCOUNT_INDEX]
         next_current_year, next_current_index = BaseCommonFunc.addIndex(current_year, current_index)
         final_res, all_res, merge_res, filter_res, enhance_res, _, _, _ = Predictor.predict(base_prob, cur_data_status)
-        return final_res, all_res, {}
+        return f"{next_current_year}{next_current_index}", final_res, all_res, {}
     except Exception as e:
         err = traceback.format_exc()
         err_msg = f"错误: 参数错误 {err}"
