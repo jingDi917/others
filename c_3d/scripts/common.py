@@ -23,6 +23,8 @@ BASE_PROB_FILE = './c_3d/datas/base_prob.txt'
 FILTER_NUMBER_FILE = './c_3d/datas/filter_number.txt'
 ENHANCE_NUMBER_FILE = './c_3d/datas/enhance_number.txt'
 DATA_STATUS_FILE = './c_3d/datas/data_status.txt'
+SUM_DOFF_PAIR_FILE = './c_3d/datas/sum_diff_pair.txt'
+SUM_DIFF_OUTPUT_JSON = './c_3d/datas/sum_diff_output.txt'
 
 # 变量名
 PAIR_PROB = 'pair_prob'
@@ -61,7 +63,9 @@ AUXILIAY_RANGE = 100
 FILTER_THRESHOLD = 0.65 # 调节这个参数，能减少3的干数，实际上增加了范围
 ENHANCE_THRESHOLD = 0.7
 
-# 一会对比下实际数据和均值的差距
+SUM_DIFF_SAMPLE_MAX_COUNT = 3000
+SUN_DIFF_OUTPUT_COUNT = 5
+OUTOUT_NUMBER_COUNT = 15
 
 
 # 代码
@@ -158,6 +162,24 @@ class GetBaseData:
                 return json.loads(content)
         except FileNotFoundError:
             raise FileNotFoundError(f"过滤数据文件 {ENHANCE_NUMBER_FILE} 不存在，请先调用init_prob。")
+        
+    @classmethod
+    def getSumDiffPair(cls):
+        try:
+            with open(SUM_DOFF_PAIR_FILE, 'r') as fp:
+                content = fp.read()
+                return json.loads(content)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"和差对数据文件 {SUM_DOFF_PAIR_FILE} 不存在，请先调用init_prob。")
+    
+    @classmethod
+    def getSumDiffOutput(cls):
+        try:
+            with open(SUM_DIFF_OUTPUT_JSON, 'r') as fp:
+                content = fp.read()
+                return json.loads(content)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"和差对输出数据文件 {SUM_DIFF_OUTPUT_JSON} 不存在，请先调用strategy.py生成。")
 
 class BaseCommonFunc:
     @classmethod

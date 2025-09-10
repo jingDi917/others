@@ -1,7 +1,8 @@
-from ..scripts.strategy import Predictor, BsaeStrategy, preditct_record
+from ..scripts.strategy import Predictor, BsaeStrategy, preditct_record, PredictorV2
 from ..scripts.common import BaseCommonFunc, DATA_INDEX_NAME, DATA_HUNDREDS_NAME, DATA_TENS_NAME, DATA_ONES_NAME
 from ..scripts.common import GetBaseData
 from ..scripts.data_status import DataOperator, getSum, getDiff, isPair
+
 import json
 import random
 
@@ -47,19 +48,14 @@ def main():
             ten = int(record[DATA_TENS_NAME])
             one = int(record[DATA_ONES_NAME])
 
-            final_res, all_res, merge_res, filter_res, enhance_res, _, _, _ = Predictor.predict(base_prob, data_status, index)
+            final_res, all_res, merge_res, filter_res, enhance_res, _, _, _ = PredictorV2.predict(base_prob, data_status, index)
             originResStr = f"{hundred}{ten}{one}"
             normalResStr = getNormalSet(hundred, ten, one)
             pair_flag = isPair(hundred, ten, one)
             if len(final_res) != 0:
                 total += 1
-            if normalResStr in merge_res:
-                if originResStr in final_res:
-                    receive += 1040 * merge_res[normalResStr]
-                elif pair_flag:
-                    receive += 346 * merge_res[normalResStr]
-                else:
-                    receive += 173 * merge_res[normalResStr]
+            if originResStr in final_res:
+                receive += 1040 * merge_res[normalResStr]
                 hit += 1
             else:
                 for _, flag in enhance_res.items():

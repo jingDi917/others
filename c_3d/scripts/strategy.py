@@ -3,7 +3,7 @@ from scipy.stats import poisson
 from scipy.stats import binom
 import math
 from .common import SUM_PROB, DIFF_PROB, FIRST_FILTER_PAIR_THRESHOLD, SECOND_FILTER_PAIR_THRESHOLD, AUXILIAY_RANGE, PAIR_PROB, TUPLE_PROB, ODD_EVEN_RATIO, NUMBER, POSITION_RANGE, POSITION_RELATION, IGNORE_DIFF_THRESHOLD, IGNORE_SUM_THRESHOLD, ENHANCE_DIFF_THRESHOLD, ENHANCE_SUM_THRESHOLD
-from .common import DATA_INDEX_NAME, DATA_HUNDREDS_NAME, DATA_TENS_NAME, DATA_ONES_NAME, PDF_ADD_FATOR, PDF_TIME_FACTOR, PDF_DECAL_FACTOR, FINAL_DROP_RATIO
+from .common import DATA_INDEX_NAME, DATA_HUNDREDS_NAME, DATA_TENS_NAME, DATA_ONES_NAME, PDF_ADD_FATOR, PDF_TIME_FACTOR, PDF_DECAL_FACTOR, FINAL_DROP_RATIO, OUTOUT_NUMBER_COUNT, SUM_DIFF_SAMPLE_MAX_COUNT, SUN_DIFF_OUTPUT_COUNT
 from .common import GetBaseData
 from .data_status import DataOperator
 from .data_status import getSum, getDiff, getALlData, isPair, isTuple, oddEvenRatio, positionRange, positionRelations
@@ -11,9 +11,391 @@ import traceback
 import json
 from itertools import permutations
 import random
+import numpy as np
+import pandas as pd
+import time
 
 preditct_record = {}
 random.seed(42)  # 或 np.random.seed(42)
+
+class PredictorV2:
+
+    @classmethod
+    def predict(cls, base_prob, data_status, data_index = None):
+        try:
+            next_pair = GetPair.getNextPairV2(base_prob, data_status)
+
+            filter_number_map = GetBaseData.getFilterNumberMap()
+            enhance_numbetr_map = GetBaseData.getEnhanceNumberMap()
+            raw_data = GetBaseData.getRawData(data_index)
+            if raw_data[-1:] is None or DATA_INDEX_NAME not in raw_data[-1:] or DATA_HUNDREDS_NAME not in raw_data[-1:] or DATA_TENS_NAME not in raw_data[-1:] or DATA_ONES_NAME not in raw_data[-1:]:
+                raw_data = raw_data[:-1]
+            real_stat_map = BsaeStrategy.getRealDateStat(raw_data)
+            filter_map = FilterStrategy.getFilterMap(real_stat_map, filter_number_map)
+            enhance_map = EnhanceStrategy.getEnhanceMap(real_stat_map, enhance_numbetr_map)
+
+            predit_res, filter_res, enhance_res = cls.getPredictData(next_pair, filter_map, enhance_map, raw_data, base_prob)
+
+            supplement_res = cls.getSupplementData(base_prob, data_status)
+
+            merge_res = {}
+            if predit_res is not None:
+                merge_res.update(predit_res)
+            if supplement_res is not None:
+                merge_res.update(supplement_res)
+
+            final_res = merge_res
+
+            selected_res = cls.dropElementsByRatio(final_res, 0)
+
+            return selected_res, final_res, merge_res, filter_res, enhance_res, filter_map, enhance_map, next_pair
+        
+        except Exception as e:
+            err_msg = traceback.format_exc()
+            raise Exception(f"预测失败: {err_msg}")
+
+    @classmethod
+    def getAllPossibleOrder(cls, hundreds, tens, ones):
+        """根据百位、十位、个位的数字生成所有可能的数字组合"""
+        possible_orders = []
+        possible_orders.append(positionRelations(hundreds, tens, ones))
+        possible_orders.append(positionRelations(tens, hundreds, ones))
+        possible_orders.append(positionRelations(ones, tens, hundreds))
+        possible_orders.append(positionRelations(hundreds, ones, tens))
+        possible_orders.append(positionRelations(tens, ones, hundreds))
+        possible_orders.append(positionRelations(ones, hundreds, tens))
+        return possible_orders
+
+    @classmethod
+    def dropElementsByRatio(cls, items, drop_ratio):
+        """随机丢弃字典中的键值对"""
+        if not 0 <= drop_ratio <= 1:
+            raise ValueError("drop_ratio 必须在 [0, 1] 范围内")
+        
+        keys = list(items.keys())
+        num_to_keep = int(len(keys) * (1 - drop_ratio))
+        kept_keys = random.sample(keys, num_to_keep)
+        
+        return {k: items[k] for k in kept_keys}
+
+
+    @classmethod
+    def adjustPositionOrder(cls, hundreds, tens, ones, original_position_relation, update_position_relation):
+        # 定义符号到比较关系的映射
+        relation_map = {
+            '<': lambda a, b: a < b,
+            '>': lambda a, b: a > b,
+            '=': lambda a, b: a == b,
+        }
+        
+        # 解析当前关系 A
+        a1, a2 = original_position_relation[0], original_position_relation[1]
+        # 解析目标关系 B
+        b1, b2 = update_position_relation[0], update_position_relation[1]
+        
+        # 生成所有可能的排列
+        numbers = [hundreds, tens, ones]
+        for perm in permutations(numbers):
+            x, y, z = perm
+            # 检查当前排列是否满足目标关系 B
+            if (relation_map[b1](x, y) and relation_map[b2](y, z)):
+                return perm
+        
+        # 如果没有找到满足条件的排列（理论上不会发生，因为三个数总能找到某种顺序）
+        return (hundreds, tens, ones)
+    
+    @classmethod
+    def getSupplementData(cls, base_prob, data_status):
+        possible_sum = []
+        sum_set = base_prob[SUM_PROB]
+        sum_num_set = data_status[SUM_PROB]
+        diff_set = base_prob[DIFF_PROB]
+        diff_num_set = data_status[DIFF_PROB]
+        pair_set = base_prob[PAIR_PROB]
+        pair_num_set = data_status[PAIR_PROB]
+        tuple_set = base_prob[TUPLE_PROB]
+        tuple_num_set = data_status[TUPLE_PROB]
+        odd_even_ratio_set = base_prob[ODD_EVEN_RATIO]
+        odd_even_ratio_num_set = data_status[ODD_EVEN_RATIO]
+
+        for key, value in sum_set.items():
+            if key not in sum_num_set:
+                continue
+            if value * sum_num_set[key] > 1.5:
+                possible_sum.append(key)
+
+        possible_diff = []
+        for key, value in diff_set.items():
+            if key not in diff_num_set:
+                continue
+            if value * diff_num_set[key] > 1.7:
+                possible_diff.append(key)
+
+        other_supplement_flag = pair_set * pair_num_set > 2.5 and tuple_set * tuple_num_set > 2.5
+        possible_odd_even_ratio = []
+        for key, value in odd_even_ratio_set.items():
+            if key not in odd_even_ratio_num_set:
+                continue
+            if value * odd_even_ratio_num_set[key] > 2.5:
+                possible_odd_even_ratio.append(key)
+        
+        supplement_res = {}
+        raw_set3d, nor_set3d = getALlData()
+        for i, j, k in nor_set3d:
+            sum_value = str(getSum(i, j, k))
+            diff_value = str(getDiff(i, j, k))   
+            odd_even_ratio_value = oddEvenRatio(i, j, k)
+            if sum_value in possible_sum and diff_value in possible_diff:
+                supplement_res[f"{i}{j}{k}"] = 1
+                continue
+            # if other_supplement_flag and odd_even_ratio_value in possible_odd_even_ratio:
+            #     supplement_res[f"{i}{j}{k}"] = 1
+            #     continue
+                
+
+        return supplement_res
+    
+    @classmethod
+    def getPredictData(cls, next_pair, filter_map, enhance_map, recent_ans, base_prob):
+        hitCount = 0
+        final_res = {}
+        filter_res = {}
+        enhance_res = {}
+        
+        sum_diff_output_json = GetBaseData.getSumDiffOutput()
+        random_list = []
+        # 1. 安全地构建随机选择列表
+        for key in next_pair.keys():
+            if key not in sum_diff_output_json:
+                print(f"警告: 键 {key} 不在和差对输出数据中，跳过该键。")
+                continue
+            entries = sum_diff_output_json[key]
+            if not isinstance(entries, (list)):
+                print(f"警告: 键 {key} 的值不是列表，跳过该键。")
+                continue
+            for entry in entries:
+            # 确保条目有至少3个元素
+                if isinstance(entry, (list, tuple)) and len(entry) >= 3:
+                    random_list.append(tuple(entry))
+                else:
+                    print(f"警告: 键 {key} 的值不符合预期格式: {entry}")
+        while hitCount < OUTOUT_NUMBER_COUNT:
+            if not random_list:  # 空列表检查
+                print("错误: 没有有效的随机选择项")
+                break
+
+            selectd = random.choice(random_list)  # 直接使用random.choice更安全
+            i, j, k = selectd
+            sum_value = getSum(i, j, k)
+            diff_value = getDiff(i, j, k)
+            key = f"{sum_value}\t{diff_value}"
+            # filter_falg = cls.isFilter(i, j, k, filter_map, recent_ans, base_prob)
+            # enhance_flag = cls.isEnhance(i, j, k, enhance_map, recent_ans, base_prob)
+            enhance_flag = 0
+            filter_falg = 0
+            print(f"选择的数字组合: {i}{j}{k}, 和值: {sum_value}, 差值: {diff_value}, 过滤标志: {filter_falg}, 增强标志: {enhance_flag}")
+            if enhance_flag != 0:
+                final_res[f"{i}{j}{k}"] = 2
+                enhance_res[f"{i}{j}{k}"] = enhance_flag
+                hitCount += 2
+                continue
+            if filter_falg != 0:
+                filter_res[f"{i}{j}{k}"] = filter_falg
+                continue
+            final_res[f"{i}{j}{k}"] = 1
+            hitCount += 1
+        print(f"预测结果数量: {len(final_res)}, 过滤结果数量: {len(filter_res)}, 增强结果数量: {len(enhance_res)}")
+
+        return final_res, filter_res, enhance_res
+    
+    @classmethod
+    def getRecentPairFlag(cls, recent_ans):
+        if len(recent_ans) < 2:
+            return False
+        pre_record = recent_ans[-1:][0]
+        return isPair(int(pre_record[DATA_HUNDREDS_NAME]), int(pre_record[DATA_TENS_NAME]), int(pre_record[DATA_ONES_NAME]))
+    
+
+    @classmethod
+    def getRecentPositionRange(cls, recent_ans):
+        if not recent_ans:
+            return []
+        recent_position_range_list = []
+        for record in recent_ans[-3:]:
+            hundreds = int(record[DATA_HUNDREDS_NAME])
+            tens = int(record[DATA_TENS_NAME])
+            ones = int(record[DATA_ONES_NAME])
+            recent_position_range_list.append(positionRange(hundreds, tens, ones))
+        return recent_position_range_list
+    
+    @classmethod
+    def getConbinds(cls, i, j, k):
+        if isPair(i, j, k):
+            return []
+        return [f"{i}{j}", f"{i}{k}", f"{j}{k}", f"{j}{i}", f"{k}{i}", f"{k}{j}"]
+    
+    @classmethod
+    def getRecentConbinaSet(cls, recent_ans):
+        if not recent_ans:
+            return []
+        recent_conbina_set = set()
+        for record in recent_ans[-3:]:
+            hundreds = int(record[DATA_HUNDREDS_NAME])
+            tens = int(record[DATA_TENS_NAME])
+            ones = int(record[DATA_ONES_NAME])
+            if isPair(hundreds, tens, ones):
+                continue
+            conbinds = cls.getConbinds(hundreds, tens, ones)
+            recent_conbina_set.update(conbinds)
+        return recent_conbina_set
+
+
+    @classmethod
+    def isFilter(cls, i, j, k, filter_map, recent_ans, base_prob):
+        if not filter_map:
+            return 0
+        sum_value = str(getSum(i, j ,k))
+        diff_value = str(getDiff(i, j ,k))
+        pair_flag = isPair(i, j, k)
+        recent_pair_falg = cls.getRecentPairFlag(recent_ans)
+        tuple_flag = isTuple(i, j, k)
+        odd_even_value = oddEvenRatio(i, j, k)
+        position_range_value = positionRange(i, j, k)
+        recent_postion_range_list = cls.getRecentPositionRange(recent_ans)
+        position_relation_value = positionRelations(i, j, k)
+        recent_conbina_set = set(cls.getRecentConbinaSet(recent_ans))
+        current_conbina_set = set(cls.getConbinds(i, j, k))
+        if SUM_PROB in base_prob and sum_value in base_prob[SUM_PROB] and base_prob[SUM_PROB][sum_value] < IGNORE_SUM_THRESHOLD:
+            if "1" not in preditct_record:
+                preditct_record["1"] = 0
+            preditct_record["1"] += 1
+            return 1
+        if DIFF_PROB in base_prob and diff_value in base_prob[DIFF_PROB] and base_prob[DIFF_PROB][diff_value] < IGNORE_DIFF_THRESHOLD:
+            if "2" not in preditct_record:
+                preditct_record["2"] = 0
+            preditct_record["2"] += 1
+            return 2
+        
+        #num_set_flag = NUMBER in filter_map and (str(i) in filter_map[NUMBER] or str(j) in filter_map[NUMBER] or str(k) in filter_map[NUMBER] or str(i) in recent_number or str(j) in recent_number or str(k) in recent_number)
+        sum_set_flag = SUM_PROB in filter_map and sum_value in filter_map[SUM_PROB]
+        diff_set_flag = DIFF_PROB in filter_map and diff_value in filter_map[DIFF_PROB]
+        odd_even_set_flag = ODD_EVEN_RATIO in filter_map and odd_even_value in filter_map[ODD_EVEN_RATIO]
+        pair_set_flag = (PAIR_PROB in filter_map and pair_flag) or recent_pair_falg
+        tuple_set_flag = TUPLE_PROB in filter_map and tuple_flag
+        position_range_flag = position_range_value in recent_postion_range_list
+        auxiliary_set_num = 0
+        auxiliary_set_num += odd_even_set_flag
+        auxiliary_set_num += pair_set_flag
+        auxiliary_set_num += tuple_set_flag
+        auxiliary_set_num += position_range_flag
+        if sum_set_flag and diff_set_flag:
+            if "3" not in preditct_record:
+                preditct_record["3"] = 0
+            preditct_record["3"] += 1
+            return 3
+        if (sum_set_flag or diff_set_flag) and auxiliary_set_num >= 1:
+            if "4" not in preditct_record:
+                preditct_record["4"] = 0
+            preditct_record["4"] += 1
+            return 4
+        if auxiliary_set_num >= 3:
+            if "5" not in preditct_record:
+                preditct_record["5"] = 0
+            preditct_record["5"] += 1
+            return 5
+        
+        merge_set = current_conbina_set & recent_conbina_set
+        if merge_set != set():
+            if "6" not in preditct_record:
+                preditct_record["6"] = 0
+            preditct_record["6"] += 1
+            return 6
+        # if pair_flag and recent_pair_falg:
+        #     if "6" not in preditct_record:
+        #         preditct_record["6"] = 0
+        #     preditct_record["6"] += 1
+        #     return 6
+        # if str(i) in recent_number or str(j) in recent_number or str(k) in recent_number:
+        #     if "7" not in preditct_record:
+        #         preditct_record["7"] = 0
+        #     preditct_record["7"] += 1
+        #     return 6
+        # if SUM_PROB in filter_map and sum_value in filter_map[SUM_PROB]:
+        #     if "3" not in preditct_record:
+        #         preditct_record["3"] = 0
+        #     preditct_record["3"] += 1
+        #     return 3
+        # if DIFF_PROB in filter_map and diff_value in filter_map[DIFF_PROB]:
+        #     if "4" not in preditct_record:
+        #         preditct_record["4"] = 0
+        #     preditct_record["4"] += 1
+        #     return 4
+        # if ODD_EVEN_RATIO in filter_map and odd_even_value in filter_map[ODD_EVEN_RATIO]:
+        #     if "5" not in preditct_record:
+        #         preditct_record["5"] = 0
+        #     preditct_record["5"] += 1
+        #     return 5
+        # if (PAIR_PROB in filter_map and filter_map[PAIR_PROB] and pair_flag):
+        #     if "6" not in preditct_record:
+        #         preditct_record["6"] = 0
+        #     preditct_record["6"] += 1
+        #     return 6
+        # if TUPLE_PROB in filter_map and filter_map[TUPLE_PROB] and tuple_flag:
+        #     if "7" not in preditct_record:
+        #         preditct_record["7"] = 0
+        #     preditct_record["7"] += 1
+        #     return 7
+        return 0
+    
+    @classmethod
+    def isEnhance(cls, i, j, k, enhance_map, recent_ans, base_prob):
+        if not enhance_map:
+            return 0
+        sum_value = str(getSum(i, j ,k))
+        diff_value = str(getDiff(i, j ,k))
+        pair_flag = isPair(i, j, k)
+        tuple_flag = isTuple(i, j, k)
+        odd_even_value = oddEvenRatio(i, j, k)
+        position_range = positionRange(i, j, k)
+        position_relation = positionRelations(i, j, k)
+
+        num_set_flag = NUMBER in enhance_map and (i in enhance_map[NUMBER] or j in enhance_map[NUMBER] or k in enhance_map[NUMBER])
+        sum_set_flag = SUM_PROB in enhance_map and sum_value in enhance_map[SUM_PROB]
+        diff_set_flag = DIFF_PROB in enhance_map and diff_value in enhance_map[DIFF_PROB]
+        tuple_set_flag = TUPLE_PROB in enhance_map and enhance_map[TUPLE_PROB] and tuple_flag
+        odd_even_set_flag = ODD_EVEN_RATIO in enhance_map and odd_even_value in enhance_map[ODD_EVEN_RATIO]
+        pair_set_flag = PAIR_PROB in enhance_map and enhance_map[PAIR_PROB] and pair_flag
+
+        auxiliary_flag_num = 0
+        auxiliary_flag_num += num_set_flag
+        auxiliary_flag_num += tuple_set_flag
+        auxiliary_flag_num += odd_even_set_flag
+        auxiliary_flag_num += pair_set_flag
+        if sum_set_flag and diff_set_flag:
+            return 1
+        if (sum_set_flag or diff_set_flag) and auxiliary_flag_num >= 2:
+            return 2
+        if odd_even_set_flag and pair_flag:
+            return 3
+        if odd_even_set_flag and tuple_flag:
+            return 4
+        if odd_even_set_flag and num_set_flag:
+            return 5
+        if auxiliary_flag_num > 3:
+            return 3
+        # if (SUM_PROB in enhance_map and sum_va lue in enhance_map[SUM_PROB]):
+        #     return 1
+        # if DIFF_PROB in enhance_map and diff_value in enhance_map[DIFF_PROB]:
+        #     return 2
+        # if ODD_EVEN_RATIO in enhance_map and odd_even_value in enhance_map[ODD_EVEN_RATIO]:
+        #     return 3
+        # if PAIR_PROB in enhance_map and enhance_map[PAIR_PROB] and pair_flag:
+        #     return 4
+        # if TUPLE_PROB in enhance_map and enhance_map[TUPLE_PROB] and tuple_flag:
+        #     return 5
+        return 0
+
+
 
 class Predictor:
 
@@ -393,10 +775,6 @@ class Predictor:
         return 0
     
 
-    @classmethod
-    def getFinalSort():
-        pass
-
 class CalulateMathProbability:
     @classmethod
     def getKthEvegntProbByGamma(cls, prob, k, t):
@@ -455,6 +833,61 @@ class GetPair:
                     continue
                 next_pair[f"{s_key}\t{d_key}"] = prob
         return next_pair
+    
+
+    @classmethod
+    def getNextPairV2(cls, base_prob, data_status):
+        next_pdf = cls.getNextPdf(base_prob, data_status)
+        if SUM_PROB not in next_pdf or DIFF_PROB not in next_pdf:
+            return []
+        
+        sum_set = next_pdf[SUM_PROB]
+        diff_set = next_pdf[DIFF_PROB]
+        sum_keys = cls.sample_keys_from_distribution(pd.Series(sum_set), num_samples=SUM_DIFF_SAMPLE_MAX_COUNT, replace=True)
+        diff_keys = cls.sample_keys_from_distribution(pd.Series(diff_set), num_samples=SUM_DIFF_SAMPLE_MAX_COUNT, replace=True)
+        next_pair = {}
+        SUM_DIFF_PAIR_JSON = GetBaseData.getSumDiffPair()
+        for index in range(SUM_DIFF_SAMPLE_MAX_COUNT):
+            s_key = sum_keys[index]
+            d_key = diff_keys[index]
+            if s_key not in SUM_DIFF_PAIR_JSON:
+                print(f"警告: 和值 {s_key} 不在预定义的和差对中，跳过该值。")
+            for d_key in diff_keys:
+                if int(d_key) not in SUM_DIFF_PAIR_JSON[s_key]:
+                    continue
+                prob = sum_set[s_key] * diff_set[d_key]
+                next_pair[f"{s_key}\t{d_key}"] = prob
+                if len(next_pair) >= SUN_DIFF_OUTPUT_COUNT:
+                    return next_pair
+        return next_pair
+    
+    @classmethod
+    def sample_keys_from_distribution(cls, prob_series, num_samples=3, replace=False):
+        """
+        从概率分布中随机抽取key
+        
+        Parameters:
+        prob_series: 概率值的Series，索引为key
+        num_samples: 要抽取的样本数量
+        replace: 是否允许重复抽样
+        """
+        keys = prob_series.index.tolist()
+        probabilities = prob_series.values
+        
+        # 确保概率总和为1（处理浮点精度问题）
+        probabilities = probabilities / probabilities.sum()
+        
+        # 使用numpy的choice函数按概率抽样
+        sampled_keys = np.random.choice(
+            keys, 
+            size=num_samples, 
+            replace=replace, 
+            p=probabilities
+        )
+        
+        return sampled_keys.tolist()
+
+
     
     @classmethod
     def getNextPdf(cls, base_prob, data_status):
